@@ -1,14 +1,8 @@
 from data import get_data, get_data_source
-from striatum.storage import (Action, MemoryHistoryStorage, MemoryModelStorage, MemoryActionStorage) 
-from striatum.storage import history
-from striatum.storage import model
-from striatum.bandit import (linucb, linthompsamp)
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
-from selection import scheme_selection
 import logging
 from pathlib import Path
-from numpy.random import Generator, PCG64
 import random
 
 def run_bandit_arms(dt):
@@ -76,7 +70,6 @@ def run_bandit_arms(dt):
             plt.close(f)
 
 
-
 def run_bandit_round(dt):
     setting = 'pretrained'
     cand_set_sz = 3
@@ -121,19 +114,8 @@ def run_gpt(X, anchor, true_ids, n_rounds):
         logging.info("Running recommendations for id : %d" %(curr_id))
         logging.info("Corresponding query is : %s" %(curr_query))
         ground_queries = X[ground_actions]
-        cand_t = get_next_query('GPT', setting)
-        tsz = len(cand)
-        cand_sz = 1 if tsz == 0 else tsz
-        cand_t = cand_t.difference(cand)
-        tsz = len(cand_t)
-        cand_t_sz = 1 if tsz == 0 else tsz
-        for q in cand_t:
-            w_t[q] = eta/((1-eta)*cand_t_sz*cand_sz)
-        w_k = list(w_t.keys())
-        p_t = [ (1-eta)*w + eta/cand_sz for w in w_t.values() ]
-        cand.update(cand_t)
-        ind = choices(range(len(p_t)), weights=p_t)
-        score = get_recommendation_score(ground_queries,w_k[ind])
+        next_query = get_next_query('GPT', setting)
+        score = get_recommendation_score(ground_queries, next_query)
         if score >= 0.5:
             r_t = 1
             if (t > 0):
