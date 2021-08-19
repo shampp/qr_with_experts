@@ -74,7 +74,7 @@ def run_bandit_arms(dt):
 
 def run_bandit_round(dt):
     setting = 'scratch'
-    n_rounds = 1000
+    n_rounds = 10
     experiment_bandit = list() 
     df, X, anchor_ids, noof_anchors = get_data(dt)
     if setting == 'pretrained':
