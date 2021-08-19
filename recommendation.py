@@ -29,7 +29,7 @@ def get_recommendations(curr_query, cand_set_sz, setting):
     if setting == 'scratch':
         for method in scratch_models:
             if method == 'GPT':
-                gpt_sep = ' [sep] '
+                sep = ' [sep] '
                 special_tokens = ['[sep]', '[bos]']
                 #cand['gpt'] = set()
                 model_dest = '../Data/semanticscholar/model/gpt2/wordpiece'
@@ -40,34 +40,31 @@ def get_recommendations(curr_query, cand_set_sz, setting):
                 #for i in range(cand_set_sz):
                 #    print('Generated {}: {}'.format(i, tokenizer.decode(outputs[i], skip_special_tokens=False)))
                 #print([tokenizer.decode(outputs[i], skip_special_tokens=False).split(' [sep] ')[1] for i in range(cand_set_sz)])
-                rmds = [tokenizer.decode(outputs[i], skip_special_tokens=False).split(' [sep] ')[1] for i in range(cand_set_sz)]
-                for i in rmds:
-                    for tok in special_tokens:
-                         i = i.replace(tok, '')
+                rmds = [ tokenizer.decode(outputs[i], skip_special_tokens=False).split(sep)[1] for i in range(cand_set_sz) ]
+                for i in range(len(rmds)):
+                    for j in special_tokens:
+                        rmds[i] = rmds[i].replace(j,'')
                  
                 cand.update(rmds)
-                #print(cand)
-                #print(rmds)
-                #cand.update(rmds)
-                #print(cand)
-                #exit(0)
                 #cand.update([tokenizer.decode(outputs[i], skip_special_tokens=False).split(' [sep] ')[1] for i in range(cand_set_sz)])
                 #print([tokenizer.decode(outputs[i], skip_special_tokens=False).split(' [sep] ')[1] for i in range(cand_set_sz)])
                 print("gpt set")
                 print(cand)
 
-            if method == 'ctrl':
-                cand['ctrl'] = set()
+            if method == 'CTRL':
+                sep = ' [sep] '
+                special_tokens = ['[sep]', '[bos]']
+                #cand['ctrl'] = set()
                 model_dest ='../Data/semanticscholar/model/ctrl'
                 from transformers import CTRLLMHeadModel
                 model = CTRLLMHeadModel.from_pretrained(model_dest)
 
                 outputs = model.generate(input_ids=input_ids, num_beams=20, num_return_sequences=cand_set_sz, max_length=mlen, do_sample=False, temperature=0.4)
                 #cand.update([tokenizer.decode(outputs[i], skip_special_tokens=False).split(' [sep] ')[context_q_no] for i in range(cand_set_sz)])
-                rmds = [tokenizer.decode(outputs[i], skip_special_tokens=False).split(' [sep] ')[1] for i in range(cand_set_sz)]
-                for i in rmds:
-                    for tok in special_tokens:
-                         i = i.replace(tok, '')
+                rmds = [ tokenizer.decode(outputs[i], skip_special_tokens=False).split(sep)[1] for i in range(cand_set_sz) ]
+                for i in range(len(rmds)):
+                    for j in special_tokens:
+                        rmds[i] = rmds[i].replace(j,'')
 
                 cand.update(rmds)
                 #cand.update([tokenizer.decode(outputs[i], skip_special_tokens=False).split(' [sep] ')[1] for i in range(cand_set_sz)])

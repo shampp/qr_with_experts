@@ -11,33 +11,20 @@ def run_bandit_arms(dt):
     n_rounds = 1000
     candidate_ix = [2, 3, 5, 10]
 
-    df, X, farms, anchor_ids, anchor_features, tot_arms = get_data(dt)
+    df, X, anchor_ids, noof_anchors = get_data(dt)
     src = get_data_source(dt)
     regret = {}
-    epsilon = 0.5
     for cand_sz in candidate_ix:
         regret[cand_sz] = {}
-        log_file = Path('../Data/', src, src+'_%d.log' %(cand_sz))
+        log_file = Path('../Data/', src, src+'exp3_%d.log' %(cand_sz))
         logging.basicConfig(filename = log_file, format='%(asctime)s : %(message)s', level=logging.INFO)
         logging.info("Running %s algorithm with %s selection scheme for epsilon %f with candidate size %d" %(bandit,scheme,epsilon,cand_sz))
         for anchor in anchor_ids:
             anchor_session_id = df.iloc[anchor]['session_id']
             true_ids = df.index[df['session_id'] == anchor_session_id].tolist()
-            logging.info("Calculating cosine similarity")
-            cos_sim = cosine_similarity(X[anchor,:].reshape(1,-1),X)
-            logging.info("Running arms selection algorithm for anchor id: %d session_id: %s" %(anchor, anchor_session_id))
-            actions = scheme_selection(scheme,farms[farms != anchor],np.delete(cos_sim.ravel(),anchor),cand_sz,epsilon)
-            logging.info("Finished with arms selection")
-            arms_context = X[actions,:]
-            anchor_context = X[anchor,:]    #.reshape(1,-1)
-            arms = MemoryActionStorage()
-            arms.add([Action(act) for act in actions])
-            regret[cand_sz][anchor] = {}
-            policy = policy_generation(bandit, arms)
-            logging.info("evaluating policy")
-            seq_error = policy_evaluation(policy, bandit, anchor, anchor_context, true_ids, arms, arms_context,n_rounds)
-            logging.info("calculating regret")
-            regret[cand_sz][anchor] = regret_calculation(seq_error)
+            #true_ids.sort() #just in case if
+            logging.info("evaluating policy and calculating regret")
+            regret[cand_sz][anchor] = regret_calculation(policy_evaluation(bandit, setting, X, true_ids, n_rounds,cand_sz))
             logging.info("finished with regret calculation")
 
         logger = logging.getLogger()
@@ -55,7 +42,7 @@ def run_bandit_arms(dt):
         fig, ax = plt.subplots(frameon=False)
         rc('mathtext',default='regular')
         rc('text', usetex=True)
-        col = {10:'b', 100:'r', 250:'k', 500:'c'}
+        col = {2:'b', 3:'r', 5:'k', 10:'c'}
         regret_file = 'cand_cum_regret.txt'
         with open(regret_file, "w") as regret_fd:
             for cand_sz in candidate_ix:
@@ -94,7 +81,7 @@ def run_bandit_round(dt):
             anchor_session_id = df.iloc[anchor]['session_id']
             true_ids = df.index[df['session_id'] == anchor_session_id].tolist()
             #true_ids.sort() #just in case if
-            regret[bandit][anchor] = regret_calculation(policy_evaluation(bandit, setting, X, true_ids, n_rounds))
+            regret[bandit][anchor] = regret_calculation(policy_evaluation(bandit, setting, X, true_ids, n_rounds, cand_set_sz))
 
         logger = logging.getLogger()
         for hdlr in logger.handlers[:]:
@@ -131,7 +118,7 @@ def run_bandit_round(dt):
         plt.close(f)
 
 
-def run_ctrl(setting, X, true_ids, n_rounds):
+def run_ctrl(setting, X, true_ids, n_rounds, cand_set_sz):
     random.seed(42)
     seq_error = np.zeros(shape=(n_rounds,1))
     for t in range(n_rounds):
@@ -151,7 +138,7 @@ def run_ctrl(setting, X, true_ids, n_rounds):
     return seq_error
 
 
-def run_gpt(setting, X, true_ids, n_rounds):
+def run_gpt(setting, X, true_ids, n_rounds, cand_set_sz):
     random.seed(42)
     seq_error = np.zeros(shape=(n_rounds,1))
     for t in range(n_rounds):
@@ -171,9 +158,8 @@ def run_gpt(setting, X, true_ids, n_rounds):
     return seq_error
 
 
-def run_exp3(setting, X, true_ids, n_rounds):
+def run_exp3(setting, X, true_ids, n_rounds, cand_set_sz):
     eta = 1e-3
-    cand_set_sz = 3
     random.seed(42)
     seq_error = np.zeros(shape=(n_rounds, 1))
     r_t = 1
