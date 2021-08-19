@@ -3,9 +3,6 @@ from numpy.random import Generator, PCG64
 from pathlib import Path
 from pandas import read_csv
 from get_contexts import get_word_embedding
-#from selection import submodular_select, random_select
-#from sklearn.metrics.pairwise import cosine_similarity
-#import numpy as np
 
 data_dir = '../Data/'
 dataset = {
@@ -71,12 +68,12 @@ def get_data(dt):
     #candidate_set_sz = 500
     #epsilon = 0.5
     rg = Generator(PCG64(12345))
-    cnt = 100
-    #cnt = 10
+    #cnt = 100
+    cnt = 2
     dest_file = get_dest_file(dt)
     if dest_file.is_file():
         df = load_processed_data(dt,dest_file)
-        actions = df.index.values
+        #actions = df.index.values
         #Qm = df.query_text.to_numpy()
         #X = get_word_embedding(df.query_text.to_numpy()).detach().cpu().numpy()
         X = df.query_text.to_numpy()
@@ -85,7 +82,7 @@ def get_data(dt):
         anchor_ids = s[s['session_id'].isin(anchors)].index.values #first index of the session
         #anchor_features = X[anchor_ids,:]
         
-        return df, X, actions, anchor_ids, cnt
+        return df, X, anchor_ids, cnt
         #return df, X, actions, anchor_ids, anchor_features, cnt
         '''for i in anchor_ids:
             cos_sim = cosine_similarity(X[i,:].reshape(1,-1),X)

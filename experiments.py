@@ -4,6 +4,8 @@ import numpy as np
 import logging
 from pathlib import Path
 import random
+from recommendation import *
+from random import choices
 
 def run_bandit_arms(dt):
     n_rounds = 1000
@@ -70,12 +72,11 @@ def run_bandit_arms(dt):
             plt.close(f)
 
 
-def run_bandit_round(dt, setting):
-    setting = 'pretrained'
-    cand_set_sz = 3
+def run_bandit_round(dt):
+    setting = 'scratch'
     n_rounds = 1000
     experiment_bandit = list() 
-    df, X, farms, anchor_ids, tot_arms = get_data(dt)
+    df, X, anchor_ids, noof_anchors = get_data(dt)
     if setting == 'pretrained':
         experiment_bandit = ['EXP3', 'GPT', 'XL', 'CTRL', 'BERT', 'BART']
     else:
@@ -83,7 +84,6 @@ def run_bandit_round(dt, setting):
     
     regret = {}
     src = get_data_source(dt)
-    eta = 1e-3
     for bandit in experiment_bandit:
         log_file = Path('../Data/', src, 'logs',src+'%s.log' %(bandit))
         logging.basicConfig(filename = log_file, format='%(asctime)s : %(message)s', level=logging.INFO)
@@ -101,6 +101,54 @@ def run_bandit_round(dt, setting):
             hdlr.close()
             logger.removeHandler(hdlr)
 
+    import matplotlib.pyplot as plt
+    from matplotlib import rc
+    with plt.style.context(("seaborn-darkgrid",)):
+        f = plt.figure()
+        f.clear()
+        plt.clf()
+        plt.close(f)
+        fig, ax = plt.subplots(frameon=False)
+        rc('mathtext',default='regular')
+        rc('text', usetex=True)
+        col_list = ['b', 'r', 'k', 'c']
+        col = {experiment_bandit[i]:col_list[i] for i in range(len(experiment_bandit))}
+        sty = {'EXP3':'-', 'GPT':':', 'CTRL':'--', 'XL':'-.', 'BERT':'-', 'BART':'--'}
+        labels = {'EXP3':'SS-EXP3', 'GPT':'GPT', 'CTRL':'CTRL', 'XL':'XL', 'BERT':'BERT', 'BART':'BART'}
+        regret_file = 'cum_regret.txt'
+        with open(regret_file, "w") as regret_fd:
+            for bandit in experiment_bandit:
+                cum_regret = [sum(x)/tot_arms for x in zip(*regret[bandit].values())]
+                val = bandit+','+','.join([str(e) for e in cum_regret])
+                print(val, file=regret_fd)
+                ax.plot(range(n_rounds), cum_regret, c=col[bandit], ls=sty[bandit], label=labels[bandit])
+                ax.set_xlabel('rounds')
+                ax.set_ylabel('cumulative regret')
+                ax.legend()
+        fig.savefig('round_regret.pdf',format='pdf')
+        f = plt.figure()
+        f.clear()
+        plt.close(f)
+
+
+def run_ctrl(setting, X, true_ids, n_rounds):
+    random.seed(42)
+    seq_error = np.zeros(shape=(n_rounds,1))
+    for t in range(n_rounds):
+        curr_id = random.choice(true_ids)   #for curr_id in true_ids[:-1]:  #p_t = list()
+        curr_query = X[curr_id]
+        logging.info("Running recommendations for id : %d" %(curr_id))
+        logging.info("Corresponding query is : %s" %(curr_query))
+        ground_queries = X[ground_actions]
+        next_query = get_next_query('CTRL', setting, curr_query)
+        score = get_recommendation_score(ground_queries, next_query)
+        if score >= 0.5:
+            if (t > 0):
+                seq_error[t] = seq_error[t-1]
+        else:
+            seq_error[t] = 1 if (t==0) else seq_error[t-1] + 1.0
+
+    return seq_error
 
 
 def run_gpt(setting, X, true_ids, n_rounds):
@@ -123,10 +171,12 @@ def run_gpt(setting, X, true_ids, n_rounds):
     return seq_error
 
 
-def run_exp3(X, true_ids, n_rounds):
+def run_exp3(setting, X, true_ids, n_rounds):
+    eta = 1e-3
+    cand_set_sz = 3
     random.seed(42)
     seq_error = np.zeros(shape=(n_rounds, 1))
-    r_t = dict()
+    r_t = 1
     w_t = dict()
     cand = set()
     for t in range(n_rounds):
@@ -148,13 +198,15 @@ def run_exp3(X, true_ids, n_rounds):
         w_k = list(w_t.keys())
         p_t = [ (1-eta)*w + eta/cand_sz for w in w_t.values() ]
         cand.update(cand_t)
-        ind = choices(range(len(p_t)), weights=p_t)
+        print(cand)
+        ind = choices(range(len(p_t)), weights=p_t)[0]
         score = get_recommendation_score(ground_queries,w_k[ind])
         if score >= 0.5:
             r_t = 1
             if (t > 0):
                 seq_error[t] = seq_error[t-1]
         else:
+            r_t = 0
             seq_error[t] = 1 if (t==0) else seq_error[t-1] + 1.0
 
         r_hat = r_t/p_t[ind]
@@ -165,9 +217,11 @@ def run_exp3(X, true_ids, n_rounds):
 
 def policy_evaluation(bandit, setting, X, true_ids, n_rounds):
     if bandit == 'EXP3':
-        return run_exp3(X, anchor, true_ids, n_rounds)
+        return run_exp3(setting, X, true_ids, n_rounds)
     if bandit == 'GPT':
         return run_gpt(setting, X, true_ids, n_rounds)
+    if bandit == 'CTRL':
+        return run_ctrl(setting, X, true_ids, n_rounds)
 
 
 def regret_calculation(seq_error):
