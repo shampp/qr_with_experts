@@ -44,13 +44,20 @@ def get_recommendations(curr_query, cand_set_sz, setting):
                 
     return cand
 
-def get_next_query(curr_query, algo, setting):
+def get_next_query(algo, setting, curr_query):
     pretrained_models = ['GPT','XL','CTRL','BERT','BART']
     scratch_models = ['GPT', 'CTRL']
 
-    if setting == 'scratch':
+    if setting == 'pretrained':
+        if algo not in pretrained_models:
+            logging.info("Algorithm: %s does not exist in the pretrained model card" %(algo))
+            exit(0)
+        if method == 'GPT':
+            gpt_sep = 
+            special_tokens = 
+    else:
         if algo not in scratch_models:
-            logging.info("Algorithm: %s does not exist in the model card" %(algo))
+            logging.info("Algorithm: %s does not exist in the scratch model card" %(algo))
             exit(0)
         if method == 'GPT':
             gpt_sep = ' [sep] '
@@ -59,6 +66,7 @@ def get_next_query(curr_query, algo, setting):
             from transformers import GPT2LMHeadModel
             model = GPT2LMHeadModel.from_pretrained(model_dest)
             outputs = model.generate(input_ids=input_ids, num_beams=20, num_return_sequences=1, max_length=mlen, do_sample=False, temperature=0.4)
-            tokenizer.decode(outputs[i], skip_special_tokens=False).split(' [sep] ')
+            return tokenizer.decode(outputs[0], skip_special_tokens=False).split(' [sep] ')[1]
+        if method == 'CTRL':
             
     

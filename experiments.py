@@ -70,7 +70,7 @@ def run_bandit_arms(dt):
             plt.close(f)
 
 
-def run_bandit_round(dt):
+def run_bandit_round(dt, setting):
     setting = 'pretrained'
     cand_set_sz = 3
     n_rounds = 1000
@@ -80,11 +80,12 @@ def run_bandit_round(dt):
         experiment_bandit = ['EXP3', 'GPT', 'XL', 'CTRL', 'BERT', 'BART']
     else:
         experiment_bandit = ['EXP3', 'GPT', 'CTRL']
+    
     regret = {}
     src = get_data_source(dt)
     eta = 1e-3
     for bandit in experiment_bandit:
-        log_file = Path('../Data/', src, 'logs',src+'_%s.log' %(bandit))
+        log_file = Path('../Data/', src, 'logs',src+'%s.log' %(bandit))
         logging.basicConfig(filename = log_file, format='%(asctime)s : %(message)s', level=logging.INFO)
         logging.info("Running %s algorithm" %(bandit))
         regret[bandit] = {}
@@ -92,8 +93,8 @@ def run_bandit_round(dt):
         for anchor in anchor_ids:
             anchor_session_id = df.iloc[anchor]['session_id']
             true_ids = df.index[df['session_id'] == anchor_session_id].tolist()
-            true_ids.sort() #just in case if
-            regret[bandit][anchor] = regret_calculation(policy_evaluation(bandit, X, true_ids))
+            #true_ids.sort() #just in case if
+            regret[bandit][anchor] = regret_calculation(policy_evaluation(bandit, setting, X, true_ids, n_rounds))
 
         logger = logging.getLogger()
         for hdlr in logger.handlers[:]:
@@ -102,32 +103,27 @@ def run_bandit_round(dt):
 
 
 
-def run_gpt(X, anchor, true_ids, n_rounds):
+def run_gpt(setting, X, true_ids, n_rounds):
     random.seed(42)
     seq_error = np.zeros(shape=(n_rounds,1))
-    r_t = dict()
-    w_t = dict()
-    cand = set()
     for t in range(n_rounds):
         curr_id = random.choice(true_ids)   #for curr_id in true_ids[:-1]:  #p_t = list()
         curr_query = X[curr_id]
         logging.info("Running recommendations for id : %d" %(curr_id))
         logging.info("Corresponding query is : %s" %(curr_query))
         ground_queries = X[ground_actions]
-        next_query = get_next_query('GPT', setting)
+        next_query = get_next_query('GPT', setting, curr_query)
         score = get_recommendation_score(ground_queries, next_query)
         if score >= 0.5:
-            r_t = 1
             if (t > 0):
                 seq_error[t] = seq_error[t-1]
         else:
             seq_error[t] = 1 if (t==0) else seq_error[t-1] + 1.0
 
-        r_hat = r_t/p_t[ind]
-        w_t[w_k[ind]] = w_t[w_k[ind]]*np.exp(eta*r_hat)
+    return seq_error
 
 
-def run_exp3(X, anchor, true_ids, n_rounds):
+def run_exp3(X, true_ids, n_rounds):
     random.seed(42)
     seq_error = np.zeros(shape=(n_rounds, 1))
     r_t = dict()
@@ -167,11 +163,11 @@ def run_exp3(X, anchor, true_ids, n_rounds):
     return seq_error
 
 
-def policy_evaluation(X, bandit, anchor, true_ids, n_rounds):
+def policy_evaluation(bandit, setting, X, true_ids, n_rounds):
     if bandit == 'EXP3':
         return run_exp3(X, anchor, true_ids, n_rounds)
     if bandit == 'GPT':
-        return run_gpt(X, anchor, true_ids, n_rounds)
+        return run_gpt(setting, X, true_ids, n_rounds)
 
 
 def regret_calculation(seq_error):
