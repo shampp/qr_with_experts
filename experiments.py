@@ -3,9 +3,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 import logging
 from pathlib import Path
-import random
 from recommendation import *
-from random import choices
 
 def run_bandit_arms(dt):
     n_rounds = 1000
@@ -16,13 +14,12 @@ def run_bandit_arms(dt):
     regret = {}
     for cand_sz in candidate_ix:
         regret[cand_sz] = {}
-        log_file = Path('../Data/', src, src+'exp3_%d.log' %(cand_sz))
+        log_file = Path('../Data/', src, src+'_exp3_%d.log' %(cand_sz))
         logging.basicConfig(filename = log_file, format='%(asctime)s : %(message)s', level=logging.INFO)
         logging.info("Running %s algorithm with %s selection scheme for epsilon %f with candidate size %d" %(bandit,scheme,epsilon,cand_sz))
         for anchor in anchor_ids:
             anchor_session_id = df.iloc[anchor]['session_id']
             true_ids = df.index[df['session_id'] == anchor_session_id].tolist()
-            #true_ids.sort() #just in case if
             logging.info("evaluating policy and calculating regret")
             regret[cand_sz][anchor] = regret_calculation(policy_evaluation(bandit, setting, X, true_ids, n_rounds,cand_sz))
             logging.info("finished with regret calculation")
@@ -46,7 +43,7 @@ def run_bandit_arms(dt):
         regret_file = 'cand_cum_regret.txt'
         with open(regret_file, "w") as regret_fd:
             for cand_sz in candidate_ix:
-                cum_regret = [sum(x)/tot_arms for x in zip(*regret[cand_sz].values())]
+                cum_regret = [sum(x)/noof_anchors for x in zip(*regret[cand_sz].values())]
                 val = str(cand_sz)+','+','.join([str(e) for e in cum_regret])
                 print(val, file=regret_fd)
                 ax.plot(range(n_rounds), cum_regret, c=col[cand_sz], ls='-', label=r'$k = {}$'.format(cand_sz))
@@ -60,8 +57,9 @@ def run_bandit_arms(dt):
 
 
 def run_bandit_round(dt):
-    setting = 'scratch'
     n_rounds = 10
+    cand_set_sz = 3
+    setting = 'scratch'
     experiment_bandit = list() 
     df, X, anchor_ids, noof_anchors = get_data(dt)
     if setting == 'pretrained':
@@ -72,15 +70,15 @@ def run_bandit_round(dt):
     regret = {}
     src = get_data_source(dt)
     for bandit in experiment_bandit:
-        log_file = Path('../Data/', src, 'logs',src+'%s.log' %(bandit))
+        log_file = Path('../Data/', src, 'logs',src+'_%s.log' %(bandit))
         logging.basicConfig(filename = log_file, format='%(asctime)s : %(message)s', level=logging.INFO)
-        logging.info("Running %s algorithm" %(bandit))
+        logging.info("Running %s algorithm trained from %s" %(bandit,setting))
         regret[bandit] = {}
 
         for anchor in anchor_ids:
             anchor_session_id = df.iloc[anchor]['session_id']
             true_ids = df.index[df['session_id'] == anchor_session_id].tolist()
-            #true_ids.sort() #just in case if
+            true_ids.sort() #just in case if
             regret[bandit][anchor] = regret_calculation(policy_evaluation(bandit, setting, X, true_ids, n_rounds, cand_set_sz))
 
         logger = logging.getLogger()
@@ -105,7 +103,7 @@ def run_bandit_round(dt):
         regret_file = 'cum_regret.txt'
         with open(regret_file, "w") as regret_fd:
             for bandit in experiment_bandit:
-                cum_regret = [sum(x)/tot_arms for x in zip(*regret[bandit].values())]
+                cum_regret = [sum(x)/noof_anchors for x in zip(*regret[bandit].values())]
                 val = bandit+','+','.join([str(e) for e in cum_regret])
                 print(val, file=regret_fd)
                 ax.plot(range(n_rounds), cum_regret, c=col[bandit], ls=sty[bandit], label=labels[bandit])
@@ -119,6 +117,7 @@ def run_bandit_round(dt):
 
 
 def run_ctrl(setting, X, true_ids, n_rounds, cand_set_sz):
+    import random
     random.seed(42)
     seq_error = np.zeros(shape=(n_rounds,1))
     for t in range(n_rounds):
@@ -126,6 +125,8 @@ def run_ctrl(setting, X, true_ids, n_rounds, cand_set_sz):
         curr_query = X[curr_id]
         logging.info("Running recommendations for id : %d" %(curr_id))
         logging.info("Corresponding query is : %s" %(curr_query))
+        ground_actions = true_ids.copy()
+        ground_actions.remove(curr_id)  #this is the possible set of actions that are correct
         ground_queries = X[ground_actions]
         next_query = get_next_query('CTRL', setting, curr_query)
         score = get_recommendation_score(ground_queries, next_query)
@@ -139,6 +140,7 @@ def run_ctrl(setting, X, true_ids, n_rounds, cand_set_sz):
 
 
 def run_gpt(setting, X, true_ids, n_rounds, cand_set_sz):
+    import random
     random.seed(42)
     seq_error = np.zeros(shape=(n_rounds,1))
     for t in range(n_rounds):
@@ -146,6 +148,8 @@ def run_gpt(setting, X, true_ids, n_rounds, cand_set_sz):
         curr_query = X[curr_id]
         logging.info("Running recommendations for id : %d" %(curr_id))
         logging.info("Corresponding query is : %s" %(curr_query))
+        ground_actions = true_ids.copy()
+        ground_actions.remove(curr_id)  #this is the possible set of actions that are correct
         ground_queries = X[ground_actions]
         next_query = get_next_query('GPT', setting, curr_query)
         score = get_recommendation_score(ground_queries, next_query)
@@ -159,8 +163,10 @@ def run_gpt(setting, X, true_ids, n_rounds, cand_set_sz):
 
 
 def run_exp3(setting, X, true_ids, n_rounds, cand_set_sz):
-    eta = 1e-3
+    import random
+    from random import choices
     random.seed(42)
+    eta = 1e-3
     seq_error = np.zeros(shape=(n_rounds, 1))
     r_t = 1
     w_t = dict()
@@ -184,9 +190,11 @@ def run_exp3(setting, X, true_ids, n_rounds, cand_set_sz):
         w_k = list(w_t.keys())
         p_t = [ (1-eta)*w + eta/cand_sz for w in w_t.values() ]
         cand.update(cand_t)
-        print(cand)
+        logger.info("candidate set are: {}".format(' '.join(map(str, cand))))
         ind = choices(range(len(p_t)), weights=p_t)[0]
+        logger.info("getting recommendation scores")
         score = get_recommendation_score(ground_queries,w_k[ind])
+        logger.info("recommendation score is: %f" %(score))
         if score >= 0.5:
             r_t = 1
             if (t > 0):
@@ -201,13 +209,13 @@ def run_exp3(setting, X, true_ids, n_rounds, cand_set_sz):
     return seq_error
 
 
-def policy_evaluation(bandit, setting, X, true_ids, n_rounds):
+def policy_evaluation(bandit, setting, X, true_ids, n_rounds, cand_set_sz):
     if bandit == 'EXP3':
-        return run_exp3(setting, X, true_ids, n_rounds)
+        return run_exp3(setting, X, true_ids, n_rounds, cand_set_sz)
     if bandit == 'GPT':
-        return run_gpt(setting, X, true_ids, n_rounds)
+        return run_gpt(setting, X, true_ids, n_rounds, cand_set_sz)
     if bandit == 'CTRL':
-        return run_ctrl(setting, X, true_ids, n_rounds)
+        return run_ctrl(setting, X, true_ids, n_rounds, cand_set_sz)
 
 
 def regret_calculation(seq_error):
