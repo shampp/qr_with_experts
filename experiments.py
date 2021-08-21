@@ -4,6 +4,8 @@ import numpy as np
 import logging
 from pathlib import Path
 from recommendation import *
+from fasttxt import load_ft_model, get_query_embeddings
+from sklearn.metrics.pairwise import euclidean_distances, cosine_similarity
 
 def run_bandit_arms(dt):
     n_rounds = 1000
@@ -57,7 +59,7 @@ def run_bandit_arms(dt):
 
 
 def run_bandit_round(dt):
-    n_rounds = 10
+    n_rounds = 5
     cand_set_sz = 3
     setting = 'scratch'
     experiment_bandit = list() 
@@ -66,26 +68,37 @@ def run_bandit_round(dt):
         experiment_bandit = ['EXP3', 'GPT', 'XL', 'CTRL', 'BERT', 'BART']
     else:
         experiment_bandit = ['EXP3', 'GPT', 'CTRL']
-    
+
+    ft = load_ft_model()
     regret = {}
+    avg_sim = {}
+    avg_dst = {}
     src = get_data_source(dt)
     for bandit in experiment_bandit:
         log_file = Path('../Data/', src, 'logs',src+'_%s.log' %(bandit))
         logging.basicConfig(filename = log_file, format='%(asctime)s : %(message)s', level=logging.INFO)
         logging.info("Running %s algorithm trained from %s" %(bandit,setting))
         regret[bandit] = {}
+        avg_sim[bandit] = {}
+        avg_dst[bandit] = {}
 
         for anchor in anchor_ids:
             anchor_session_id = df.iloc[anchor]['session_id']
             true_ids = df.index[df['session_id'] == anchor_session_id].tolist()
             true_ids.sort() #just in case if
-            regret[bandit][anchor] = regret_calculation(policy_evaluation(bandit, setting, X, true_ids, n_rounds, cand_set_sz))
+            seq_err, avg_sim[bandit][anchor], avg_dst[bandit][anchor] = policy_evaluation(bandit, setting, X, true_ids, n_rounds, cand_set_sz, ft)
+            regret[bandit][anchor] = regret_calculation(seq_err)
 
         logger = logging.getLogger()
         for hdlr in logger.handlers[:]:
             hdlr.close()
             logger.removeHandler(hdlr)
-
+        simv = sum([sum(x)/noof_anchors for x in zip(*avg_sim[bandit].values())])/n_rounds
+        dstv = sum([sum(x)/noof_anchors for x in zip(*avg_dst[bandit].values())])/n_rounds
+        #print(sum(zip(*regret[bandit].values())))
+        print("average similarity of %s is: %f" %(bandit, simv))
+        print("average distance of %s is: %f" %(bandit, dstv))
+    
     import matplotlib.pyplot as plt
     from matplotlib import rc
     with plt.style.context(("seaborn-darkgrid",)):
@@ -116,11 +129,13 @@ def run_bandit_round(dt):
         plt.close(f)
 
 
-def run_ctrl(setting, X, true_ids, n_rounds, cand_set_sz):
+def run_ctrl(setting, X, true_ids, n_rounds, cand_set_sz, ft):
     from random import Random
     rnd = Random()
     rnd.seed(42)
     seq_error = np.zeros(shape=(n_rounds,1))
+    simv = np.zeros(shape=(n_rounds, 1))
+    dstv = np.zeros(shape=(n_rounds, 1))
     for t in range(n_rounds):
         curr_id = rnd.choice(true_ids)   #for curr_id in true_ids[:-1]:  #p_t = list()
         curr_query = X[curr_id]
@@ -137,14 +152,19 @@ def run_ctrl(setting, X, true_ids, n_rounds, cand_set_sz):
         else:
             seq_error[t] = 1 if (t==0) else seq_error[t-1] + 1.0
 
-    return seq_error
+        simv[t] = get_similarity(ft, curr_query, next_query)
+        dstv[t] = get_distance(ft, curr_query, next_query)
+
+    return seq_error, simv, dstv
 
 
-def run_gpt(setting, X, true_ids, n_rounds, cand_set_sz):
+def run_gpt(setting, X, true_ids, n_rounds, cand_set_sz, ft):
     from random import Random
     rnd = Random()
     rnd.seed(42)
     seq_error = np.zeros(shape=(n_rounds,1))
+    simv = np.zeros(shape=(n_rounds, 1))
+    dstv = np.zeros(shape=(n_rounds, 1))
     for t in range(n_rounds):
         curr_id = rnd.choice(true_ids)   #for curr_id in true_ids[:-1]:  #p_t = list()
         curr_query = X[curr_id]
@@ -161,10 +181,13 @@ def run_gpt(setting, X, true_ids, n_rounds, cand_set_sz):
         else:
             seq_error[t] = 1 if (t==0) else seq_error[t-1] + 1.0
 
-    return seq_error
+        simv[t] = get_similarity(ft, curr_query, next_query)
+        dstv[t] = get_distance(ft, curr_query, next_query)
+
+    return seq_error, simv, dstv
 
 
-def run_exp3(setting, X, true_ids, n_rounds, cand_set_sz):
+def run_exp3(setting, X, true_ids, n_rounds, cand_set_sz, ft):
     from random import Random
     rnd1 = Random()
     rnd1.seed(42)
@@ -173,9 +196,12 @@ def run_exp3(setting, X, true_ids, n_rounds, cand_set_sz):
     random.seed(42)
     eta = 1e-3
     seq_error = np.zeros(shape=(n_rounds, 1))
+    simv = np.zeros(shape=(n_rounds, 1))
+    dstv = np.zeros(shape=(n_rounds, 1))
     r_t = 1
     w_t = dict()
     cand = set()
+    
     for t in range(n_rounds):
         curr_id = rnd1.choice(true_ids)   #for curr_id in true_ids[:-1]:  #p_t = list()
         curr_query = X[curr_id]
@@ -211,19 +237,36 @@ def run_exp3(setting, X, true_ids, n_rounds, cand_set_sz):
         r_hat = r_t/p_t[ind]
         w_t[w_k[ind]] = w_t[w_k[ind]]*np.exp(eta*r_hat)
 
-    return seq_error
+        simv[t] = get_similarity(ft, curr_query, w_k[ind])
+        dstv[t] = get_distance(ft, curr_query, w_k[ind])
+
+    return seq_error, simv , dstv
 
 
-def policy_evaluation(bandit, setting, X, true_ids, n_rounds, cand_set_sz):
+def policy_evaluation(bandit, setting, X, true_ids, n_rounds, cand_set_sz, ft):
     if bandit == 'EXP3':
-        return run_exp3(setting, X, true_ids, n_rounds, cand_set_sz)
+        return run_exp3(setting, X, true_ids, n_rounds, cand_set_sz, ft)
     if bandit == 'GPT':
-        return run_gpt(setting, X, true_ids, n_rounds, cand_set_sz)
+        return run_gpt(setting, X, true_ids, n_rounds, cand_set_sz, ft)
     if bandit == 'CTRL':
-        return run_ctrl(setting, X, true_ids, n_rounds, cand_set_sz)
+        return run_ctrl(setting, X, true_ids, n_rounds, cand_set_sz, ft)
 
 
 def regret_calculation(seq_error):
     t = len(seq_error)
     regret = [x / y for x, y in zip(seq_error, range(1, t + 1))]
     return regret 
+
+def get_distance(ft, curr_query, pred_query):
+    pred = ' '.join(list(set(pred_query.split())))
+    curr = ' '.join(list(set(curr_query.split())))
+    p_vec = get_query_embeddings(ft, pred)
+    c_vec = get_query_embeddings(ft, curr)
+    return euclidean_distances(p_vec.reshape(1,-1),c_vec.reshape(1,-1))[0][0]
+
+def get_similarity(ft, curr_query, pred_query):
+    pred = ' '.join(list(set(pred_query.split())))
+    curr = ' '.join(list(set(curr_query.split())))
+    p_vec = get_query_embeddings(ft, pred)
+    c_vec = get_query_embeddings(ft, curr)
+    return cosine_similarity(p_vec.reshape(1,-1),c_vec.reshape(1,-1))[0][0]
