@@ -117,11 +117,12 @@ def run_bandit_round(dt):
 
 
 def run_ctrl(setting, X, true_ids, n_rounds, cand_set_sz):
-    import random
-    random.seed(42)
+    from random import Random
+    rnd = Random()
+    rnd.seed(42)
     seq_error = np.zeros(shape=(n_rounds,1))
     for t in range(n_rounds):
-        curr_id = random.choice(true_ids)   #for curr_id in true_ids[:-1]:  #p_t = list()
+        curr_id = rnd.choice(true_ids)   #for curr_id in true_ids[:-1]:  #p_t = list()
         curr_query = X[curr_id]
         logging.info("Running recommendations for id : %d" %(curr_id))
         logging.info("Corresponding query is : %s" %(curr_query))
@@ -140,11 +141,12 @@ def run_ctrl(setting, X, true_ids, n_rounds, cand_set_sz):
 
 
 def run_gpt(setting, X, true_ids, n_rounds, cand_set_sz):
-    import random
-    random.seed(42)
+    from random import Random
+    rnd = Random()
+    rnd.seed(42)
     seq_error = np.zeros(shape=(n_rounds,1))
     for t in range(n_rounds):
-        curr_id = random.choice(true_ids)   #for curr_id in true_ids[:-1]:  #p_t = list()
+        curr_id = rnd.choice(true_ids)   #for curr_id in true_ids[:-1]:  #p_t = list()
         curr_query = X[curr_id]
         logging.info("Running recommendations for id : %d" %(curr_id))
         logging.info("Corresponding query is : %s" %(curr_query))
@@ -163,8 +165,11 @@ def run_gpt(setting, X, true_ids, n_rounds, cand_set_sz):
 
 
 def run_exp3(setting, X, true_ids, n_rounds, cand_set_sz):
-    import random
-    from random import choices
+    from random import Random
+    rnd1 = Random()
+    rnd1.seed(42)
+    rnd2 = Random()
+    rnd2.seed(99)
     random.seed(42)
     eta = 1e-3
     seq_error = np.zeros(shape=(n_rounds, 1))
@@ -172,7 +177,7 @@ def run_exp3(setting, X, true_ids, n_rounds, cand_set_sz):
     w_t = dict()
     cand = set()
     for t in range(n_rounds):
-        curr_id = random.choice(true_ids)   #for curr_id in true_ids[:-1]:  #p_t = list()
+        curr_id = rnd1.choice(true_ids)   #for curr_id in true_ids[:-1]:  #p_t = list()
         curr_query = X[curr_id]
         logging.info("Running recommendations for id : %d" %(curr_id))
         logging.info("Corresponding query is : %s" %(curr_query))
@@ -191,7 +196,7 @@ def run_exp3(setting, X, true_ids, n_rounds, cand_set_sz):
         p_t = [ (1-eta)*w + eta/cand_sz for w in w_t.values() ]
         cand.update(cand_t)
         logger.info("candidate set are: {}".format(' '.join(map(str, cand))))
-        ind = choices(range(len(p_t)), weights=p_t)[0]
+        ind = rnd2.choices(range(len(p_t)), weights=p_t)[0]
         logger.info("getting recommendation scores")
         score = get_recommendation_score(ground_queries,w_k[ind])
         logger.info("recommendation score is: %f" %(score))
